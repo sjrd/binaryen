@@ -1359,6 +1359,7 @@ Expression* TranslateToFuzzReader::_makeConcrete(Type type) {
            &Self::makeCall,
            &Self::makeCallIndirect)
       .add(FeatureSet::ExceptionHandling, &Self::makeTry)
+      .add(FeatureSet::ExceptionHandling, &Self::makeTryTable)
       .add(FeatureSet::GC | FeatureSet::ReferenceTypes, &Self::makeCallRef);
   }
   if (type.isSingle()) {
@@ -1474,6 +1475,7 @@ Expression* TranslateToFuzzReader::_makeunreachable() {
          &Self::makeDrop,
          &Self::makeReturn)
     .add(FeatureSet::ExceptionHandling, &Self::makeThrow)
+    .add(FeatureSet::ExceptionHandling, &Self::makeThrowRef)
     .add(FeatureSet::GC | FeatureSet::ReferenceTypes, &Self::makeCallRef);
   return (this->*pick(options))(Type::unreachable);
 }
@@ -1634,6 +1636,54 @@ Expression* TranslateToFuzzReader::makeIf(Type type) {
 }
 
 Expression* TranslateToFuzzReader::makeTry(Type type) {
+  auto* body = make(type);
+  std::vector<Name> catchTags;
+  std::vector<Expression*> catchBodies;
+  auto numTags = upTo(MAX_TRY_CATCHES);
+  std::unordered_set<Tag*> usedTags;
+  for (Index i = 0; i < numTags; i++) {
+    if (wasm.tags.empty()) {
+      addTag();
+    }
+    auto* tag = pick(wasm.tags).get();
+    if (usedTags.count(tag)) {
+      continue;
+    }
+    usedTags.insert(tag);
+    catchTags.push_back(tag->name);
+  }
+  // The number of tags in practice may be fewer than we planned.
+  numTags = catchTags.size();
+  auto numCatches = numTags;
+  if (numTags == 0 || oneIn(2)) {
+    // Add a catch-all.
+    numCatches++;
+  }
+  for (Index i = 0; i < numCatches; i++) {
+    // Catch bodies (aside from a catch-all) begin with a pop.
+    Expression* prefix = nullptr;
+    if (i < numTags) {
+      auto tagType = wasm.getTag(catchTags[i])->sig.params;
+      if (tagType != Type::none) {
+        auto* pop = builder.makePop(tagType);
+        // Capture the pop in a local, so that it can be used later.
+        // TODO: add a good chance for using this particular local in this catch
+        // TODO: reuse an existing var if there is one
+        auto index = builder.addVar(funcContext->func, tagType);
+        prefix = builder.makeLocalSet(index, pop);
+      }
+    }
+    auto* catchBody = make(type);
+    if (prefix) {
+      catchBody = builder.makeSequence(prefix, catchBody);
+    }
+    catchBodies.push_back(catchBody);
+  }
+  // TODO: delegate stuff
+  return builder.makeTry(body, catchTags, catchBodies);
+}
+
+Expression* TranslateToFuzzReader::makeTryTable(Type type) {
   auto* body = make(type);
   std::vector<Name> catchTags;
   std::vector<Expression*> catchBodies;
@@ -4049,6 +4099,12 @@ Expression* TranslateToFuzzReader::makeThrow(Type type) {
     operands.push_back(make(t));
   }
   return builder.makeThrow(tag, operands);
+}
+
+Expression* TranslateToFuzzReader::makeThrowRef(Type type) {
+  assert(type == Type::unreachable);
+  auto* operand = make(Type(HeapType::exn, Nullable));
+  return builder.makeThrowRef(operand);
 }
 
 Expression* TranslateToFuzzReader::makeMemoryInit() {

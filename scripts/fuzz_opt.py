@@ -353,21 +353,21 @@ INITIAL_CONTENTS_IGNORE = [
     'typed_continuations_contbind.wast',
     'typed_continuations_suspend.wast',
     # TODO: make sure the fuzzer supports the new EH
-    'coalesce-locals-eh.wast',
-    'code-folding-eh.wast',
-    'code-pushing-eh.wast',
-    'dce-eh.wast',
-    'eh.wast',
-    'eh-gc.wast',
-    'exception-handling.wast',
-    'translate-to-new-eh.wast',
-    'rse-eh.wast',
-    'vacuum-eh.wast',
-    # These contain parts with new EH.
-    # TODO: split those parts out if we see that fuzzing new EH is far out.
-    'global-effects.wast',
-    'local-subtyping.wast',
-    'renamings.wat',
+    #'coalesce-locals-eh.wast',
+    #'code-folding-eh.wast',
+    #'code-pushing-eh.wast',
+    #'dce-eh.wast',
+    #'eh.wast',
+    #'eh-gc.wast',
+    #'exception-handling.wast',
+    #'translate-to-new-eh.wast',
+    #'rse-eh.wast',
+    #'vacuum-eh.wast',
+    ## These contain parts with new EH.
+    ## TODO: split those parts out if we see that fuzzing new EH is far out.
+    #'global-effects.wast',
+    #'local-subtyping.wast',
+    #'renamings.wat',
 ]
 
 
@@ -1657,6 +1657,9 @@ def get_random_opts():
                 print('avoiding --flatten due to multivalue + reference types not supporting it (spilling of non-nullable tuples)')
                 print('TODO: Resolving https://github.com/WebAssembly/binaryen/issues/4824 may fix this')
                 continue
+            if '--enable-exception-handling' in FEATURE_OPTS:
+                print('avoiding --flatten due to exception-handling not supporting it (requires blocks with results)')
+                continue
             if '--gc' not in FEATURE_OPTS:
                 print('avoiding --flatten due to GC not supporting it (spilling of non-nullable locals)')
                 continue
@@ -1715,7 +1718,7 @@ print('FEATURE_DISABLE_FLAGS:', FEATURE_DISABLE_FLAGS)
 # some features depend on other features, so if a required feature is
 # disabled, its dependent features need to be disabled as well.
 IMPLIED_FEATURE_OPTS = {
-    '--disable-reference-types': ['--disable-gc', '--disable-strings'],
+    '--disable-reference-types': ['--disable-gc', '--disable-exception-handling', '--disable-strings'],
     '--disable-gc': ['--disable-strings'],
 }
 
